@@ -4,23 +4,194 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Online Chat Room</title>
-    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        #chat-container {
+            width: 100%;
+            max-width: 600px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #header {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            background: #007bff;
+            color: #fff;
+        }
+        #header #code {
+            font-size: 18px;
+        }
+        #messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        #message-input {
+            display: flex;
+            padding: 10px;
+        }
+        #message-input input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #message-input button {
+            padding: 10px;
+            margin-left: 10px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #message-input button:hover {
+            background-color: #0056b3;
+        }
+        #connect {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+        #connect input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #connect button {
+            padding: 10px;
+            margin-left: 10px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #connect button:hover {
+            background-color: #0056b3;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <div class="code-container">
-            <span id="code">Loading...</span>
-            <button id="copy-code">Copy Code</button>
-            <button id="share-code">Share Code</button>
+    <div id="chat-container">
+        <div id="header">
+            <div id="code">Code: <span id="user-code"></span></div>
+            <button onclick="copyCode()">Copy Code</button>
         </div>
-        <div class="chat-container">
-            <input type="text" id="code-input" placeholder="Enter 5-digit code">
-            <button id="connect-btn">Connect</button>
-            <textarea id="chat-box" placeholder="Chat here..." readonly></textarea>
-            <input type="text" id="message-input" placeholder="Type a message">
-            <button id="send-btn">Send</button>
+        <div id="messages"></div>
+        <div id="message-input">
+            <input type="text" id="message" placeholder="Type a message..." />
+            <button onclick="sendMessage()">Send</button>
+        </div>
+        <div id="connect">
+            <input type="text" id="peer-id" placeholder="Enter peer ID to connect" />
+            <button onclick="connectPeer()">Connect</button>
         </div>
     </div>
-    <script src="script.js"></script>
+
+    <!-- PeerJS -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.3.2/dist/peerjs.min.js"></script>
+    <script>
+        const peer = new Peer();
+        let conn;
+        const connectionTimeout = 10000; // 10 seconds
+        let connectionStartTime;
+
+        function generateCode() {
+            return Math.floor(10000 + Math.random() * 90000).toString();
+        }
+
+        function copyCode() {
+            const codeElement = document.getElementById('user-code');
+            navigator.clipboard.writeText(codeElement.textContent);
+            alert('Code copied to clipboard!');
+        }
+
+        function updateCode() {
+            const code = generateCode();
+            document.getElementById('user-code').textContent = code;
+        }
+
+        peer.on('open', id => {
+            console.log('My peer ID is: ' + id);
+            updateCode();
+        });
+
+        peer.on('connection', connection => {
+            const now = Date.now();
+            if (conn && (now - connectionStartTime < connectionTimeout)) {
+                conn = connection;
+                conn.on('data', data => {
+                    const messagesElement = document.getElementById('messages');
+                    const messageElement = document.createElement('div');
+                    messageElement.textContent = 'Peer: ' + data;
+                    messagesElement.appendChild(messageElement);
+                    messagesElement.scrollTop = messagesElement.scrollHeight;
+                });
+                console.log('Connected with peer.');
+            } else {
+                connection.close();
+                console.log('Connection timed out or invalid.');
+            }
+        });
+
+        function sendMessage() {
+            const messageInput = document.getElementById('message');
+            const message = messageInput.value;
+
+            if (conn && message) {
+                conn.send(message);
+                const messagesElement = document.getElementById('messages');
+                const messageElement = document.createElement('div');
+                messageElement.textContent = 'You: ' + message;
+                messagesElement.appendChild(messageElement);
+                messagesElement.scrollTop = messagesElement.scrollHeight;
+                messageInput.value = '';
+            }
+        }
+
+        function connectPeer() {
+            const peerId = document.getElementById('peer-id').value;
+            if (peerId) {
+                connectionStartTime = Date.now();
+                conn = peer.connect(peerId);
+                conn.on('open', () => {
+                    console.log('Connected to peer: ' + peerId);
+                });
+                conn.on('data', data => {
+                    const messagesElement = document.getElementById('messages');
+                    const messageElement = document.createElement('div');
+                    messageElement.textContent = 'Peer: ' + data;
+                    messagesElement.appendChild(messageElement);
+                    messagesElement.scrollTop = messagesElement.scrollHeight;
+                });
+
+                // Close connection if not paired within timeout
+                setTimeout(() => {
+                    if (conn && conn.open) {
+                        conn.close();
+                        console.log('Connection timed out.');
+                    }
+                }, connectionTimeout);
+            }
+        }
+    </script>
 </body>
 </html>

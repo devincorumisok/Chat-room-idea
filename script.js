@@ -1,54 +1,92 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const codeDisplay = document.getElementById('code');
-    const copyCodeBtn = document.getElementById('copy-code');
-    const shareCodeBtn = document.getElementById('share-code');
-    const codeInput = document.getElementById('code-input');
-    const connectBtn = document.getElementById('connect-btn');
-    const chatBox = document.getElementById('chat-box');
-    const messageInput = document.getElementById('message-input');
-    const sendBtn = document.getElementById('send-btn');
-    
-    let localCode = generateCode();
-    let remoteCode = null;
-    let connected = false;
-    
-    codeDisplay.textContent = localCode;
-    
-    copyCodeBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(localCode);
+// Initialize PeerJS
+const peer = new Peer();
+let conn;
+const connectionTimeout = 10000; // 10 seconds
+let connectionStartTime;
+
+// Generate a random 5-digit code
+function generateCode() {
+    return Math.floor(10000 + Math.random() * 90000).toString();
+}
+
+// Copy the code to the clipboard
+function copyCode() {
+    const codeElement = document.getElementById('user-code');
+    navigator.clipboard.writeText(codeElement.textContent).then(() => {
         alert('Code copied to clipboard!');
     });
-    
-    shareCodeBtn.addEventListener('click', () => {
-        alert('Share this code: ' + localCode);
-    });
-    
-    connectBtn.addEventListener('click', () => {
-        remoteCode = codeInput.value;
-        if (remoteCode.length === 5) {
-            setTimeout(() => {
-                if (remoteCode === localCode) {
-                    connected = true;
-                    chatBox.value += 'Connected to: ' + remoteCode + '\n';
-                } else {
-                    chatBox.value += 'Failed to connect with code: ' + remoteCode + '\n';
-                }
-            }, 10000); // Simulates the 10-second wait
-        } else {
-            alert('Invalid code!');
-        }
-    });
-    
-    sendBtn.addEventListener('click', () => {
-        if (messageInput.value && connected) {
-            chatBox.value += 'You: ' + messageInput.value + '\n';
-            messageInput.value = '';
-        } else if (!connected) {
-            alert('You need to connect to a chat first!');
-        }
-    });
-    
-    function generateCode() {
-        return Math.floor(10000 + Math.random() * 90000).toString();
+}
+
+// Update the displayed code
+function updateCode() {
+    const code = generateCode();
+    document.getElementById('user-code').textContent = code;
+}
+
+// When the peer is open, set the code and listen for connections
+peer.on('open', id => {
+    console.log('My peer ID is: ' + id);
+    updateCode();
+});
+
+// When a connection is received
+peer.on('connection', connection => {
+    const now = Date.now();
+    if (conn && (now - connectionStartTime < connectionTimeout)) {
+        conn = connection;
+        conn.on('data', data => {
+            const messagesElement = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            messageElement.textContent = 'Peer: ' + data;
+            messagesElement.appendChild(messageElement);
+            messagesElement.scrollTop = messagesElement.scrollHeight;
+        });
+        console.log('Connected with peer.');
+    } else {
+        connection.close();
+        console.log('Connection timed out or invalid.');
     }
 });
+
+// Send a message to the connected peer
+function sendMessage() {
+    const messageInput = document.getElementById('message');
+    const message = messageInput.value;
+
+    if (conn && message) {
+        conn.send(message);
+        const messagesElement = document.getElementById('messages');
+        const messageElement = document.createElement('div');
+        messageElement.textContent = 'You: ' + message;
+        messagesElement.appendChild(messageElement);
+        messagesElement.scrollTop = messagesElement.scrollHeight;
+        messageInput.value = '';
+    }
+}
+
+// Connect to another peer
+function connectPeer() {
+    const peerId = document.getElementById('peer-id').value;
+    if (peerId) {
+        connectionStartTime = Date.now();
+        conn = peer.connect(peerId);
+        conn.on('open', () => {
+            console.log('Connected to peer: ' + peerId);
+        });
+        conn.on('data', data => {
+            const messagesElement = document.getElementById('messages');
+            const messageElement = document.createElement('div');
+            messageElement.textContent = 'Peer: ' + data;
+            messagesElement.appendChild(messageElement);
+            messagesElement.scrollTop = messagesElement.scrollHeight;
+        });
+
+        // Close connection if not paired within timeout
+        setTimeout(() => {
+            if (conn && conn.open) {
+                conn.close();
+                console.log('Connection timed out.');
+            }
+        }, connectionTimeout);
+    }
+}
