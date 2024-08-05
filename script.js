@@ -1,92 +1,91 @@
-// Initialize PeerJS
-const peer = new Peer();
-let conn;
-const connectionTimeout = 10000; // 10 seconds
-let connectionStartTime;
+// script.js
 
-// Generate a random 5-digit code
+// Replace with your own PeerJS key
+const peer = new Peer(undefined, {
+    host: 'peerjs-server.herokuapp.com', // Use PeerJS's hosted server
+    port: 443,
+    secure: true
+});
+
+let peerId = '';
+let conn = null;
+
+// Generate a random 5-digit code and display it
 function generateCode() {
-    return Math.floor(10000 + Math.random() * 90000).toString();
+    return Math.floor(10000 + Math.random() * 90000);
 }
 
-// Copy the code to the clipboard
+// Set up the peer ID and display it
+function setupPeer() {
+    peerId = generateCode().toString();
+    document.getElementById('user-code').innerText = `Your Code: ${peerId}`;
+
+    // Handle incoming connections
+    peer.on('connection', (connection) => {
+        conn = connection;
+        connection.on('data', (data) => {
+            displayMessage(data);
+        });
+    });
+
+    // Handle disconnection
+    peer.on('disconnected', () => {
+        conn = null;
+    });
+}
+
+// Copy the peer code to clipboard
 function copyCode() {
-    const codeElement = document.getElementById('user-code');
-    navigator.clipboard.writeText(codeElement.textContent).then(() => {
+    const code = document.getElementById('user-code').innerText.replace('Your Code: ', '');
+    navigator.clipboard.writeText(code).then(() => {
         alert('Code copied to clipboard!');
     });
 }
 
-// Update the displayed code
-function updateCode() {
-    const code = generateCode();
-    document.getElementById('user-code').textContent = code;
+// Connect to another peer using the provided code
+function connectPeer() {
+    const peerIdToConnect = document.getElementById('peer-id').value;
+    if (peerIdToConnect === peerId) {
+        alert('You cannot connect to yourself!');
+        return;
+    }
+
+    conn = peer.connect(peerIdToConnect);
+
+    // Set a timeout for connection attempt
+    setTimeout(() => {
+        if (conn && conn.open) {
+            conn.on('open', () => {
+                conn.on('data', (data) => {
+                    displayMessage(data);
+                });
+            });
+        } else {
+            alert('Failed to connect. The other peer may not have entered the correct code or timed out.');
+            conn = null;
+        }
+    }, 10000); // 10 seconds timeout
 }
 
-// When the peer is open, set the code and listen for connections
-peer.on('open', id => {
-    console.log('My peer ID is: ' + id);
-    updateCode();
-});
-
-// When a connection is received
-peer.on('connection', connection => {
-    const now = Date.now();
-    if (conn && (now - connectionStartTime < connectionTimeout)) {
-        conn = connection;
-        conn.on('data', data => {
-            const messagesElement = document.getElementById('messages');
-            const messageElement = document.createElement('div');
-            messageElement.textContent = 'Peer: ' + data;
-            messagesElement.appendChild(messageElement);
-            messagesElement.scrollTop = messagesElement.scrollHeight;
-        });
-        console.log('Connected with peer.');
-    } else {
-        connection.close();
-        console.log('Connection timed out or invalid.');
-    }
-});
+// Display a message in the chat area
+function displayMessage(message) {
+    const messageArea = document.getElementById('messages');
+    const messageElement = document.createElement('div');
+    messageElement.textContent = message;
+    messageArea.appendChild(messageElement);
+}
 
 // Send a message to the connected peer
 function sendMessage() {
-    const messageInput = document.getElementById('message');
-    const message = messageInput.value;
-
-    if (conn && message) {
+    const message = document.getElementById('message').value;
+    if (conn && conn.open) {
         conn.send(message);
-        const messagesElement = document.getElementById('messages');
-        const messageElement = document.createElement('div');
-        messageElement.textContent = 'You: ' + message;
-        messagesElement.appendChild(messageElement);
-        messagesElement.scrollTop = messagesElement.scrollHeight;
-        messageInput.value = '';
+        displayMessage(`You: ${message}`);
+        document.getElementById('message').value = '';
+    } else {
+        alert('You are not connected to anyone.');
     }
 }
 
-// Connect to another peer
-function connectPeer() {
-    const peerId = document.getElementById('peer-id').value;
-    if (peerId) {
-        connectionStartTime = Date.now();
-        conn = peer.connect(peerId);
-        conn.on('open', () => {
-            console.log('Connected to peer: ' + peerId);
-        });
-        conn.on('data', data => {
-            const messagesElement = document.getElementById('messages');
-            const messageElement = document.createElement('div');
-            messageElement.textContent = 'Peer: ' + data;
-            messagesElement.appendChild(messageElement);
-            messagesElement.scrollTop = messagesElement.scrollHeight;
-        });
-
-        // Close connection if not paired within timeout
-        setTimeout(() => {
-            if (conn && conn.open) {
-                conn.close();
-                console.log('Connection timed out.');
-            }
-        }, connectionTimeout);
-    }
-}
+// Initialize the peer and setup the connection
+setupPeer();
